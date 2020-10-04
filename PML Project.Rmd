@@ -3,11 +3,16 @@ title: "PML Project"
 output: html_notebook
 ---
 
-```{r}
+```{r, include=FALSE}
 library(tidyverse)
 library(caret)
 library(glmnet)
 ```
+
+## Links to Github
+[Repository](https://github.com/rhartvik/bicep-curl-form)
+
+[Compiled HTML file](https://rhartvik.github.io/bicep-curl-form/)
 
 # Classifying exercise forms
 
@@ -22,7 +27,8 @@ buildData <- labeled_data[inBuild,]
 inTrain <- createDataPartition(buildData$classe, p=0.7, list=FALSE)
 training <- buildData[-inTrain,]
 testing <- buildData[inTrain,]
-
+```
+```{r, include=FALSE}
 dim(training)
 dim(testing)
 dim(validation)
@@ -85,6 +91,7 @@ The formated date is redundant with the other datetimestamps and the row number 
 ```{r}
 training5 <- training4 %>% select(-X, -cvtd_timestamp)
 ```
+
 
 Normalize the training set
 ```{r}
@@ -171,6 +178,3 @@ final_test_set6_norm <- predict(preProcess, final_test_set6)
 model1_test_predictions <- predict(model1,final_test_set6_norm)
 (model1_test_cmatrix <- confusionMatrix(model1_test_predictions,testing6_norm$classe))
 ```
-
-
-## Link to Github
