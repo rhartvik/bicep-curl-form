@@ -1,0 +1,176 @@
+---
+title: "PML Project"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(caret)
+library(glmnet)
+```
+
+# Classifying exercise forms
+
+## Creating rest, training, validation sets
+```{r}
+labeled_data <- read.csv("pml-training.csv")
+
+inBuild <- createDataPartition(labeled_data$classe, p=0.7, list=FALSE)
+validation <- labeled_data[-inBuild,]
+buildData <- labeled_data[inBuild,]
+
+inTrain <- createDataPartition(buildData$classe, p=0.7, list=FALSE)
+training <- buildData[-inTrain,]
+testing <- buildData[inTrain,]
+
+dim(training)
+dim(testing)
+dim(validation)
+```
+## How I built my model
+
+The dataset started with `{r}dim(training)[2]` columns.
+In order to produce a model that will train in a reasonable amount of time, I want to select only a subset of the columns. I will focus on eliminating columns that are unlikely to provide value to the model.
+
+1. Remove columns with little variance results:
+```{r}
+training1 <- training[,-nearZeroVar(training)]
+```
+ `{r}dim(training1)[2]` columns remain.
+
+
+2. Remove columns that are null for too many rows:
+```{r}
+percentage_provided_per_classe <- training1 %>% group_by(classe) %>% summarise_each(funs(sum(!is.na(.))/n()))
+percentage_provided <- training1 %>% summarise_each(funs(sum(!is.na(.))/n()))
+incomplete_columns <- colnames(percentage_provided[,(percentage_provided[1,]) < 1])
+training2 <- training1 %>% select(-incomplete_columns)
+```
+ `{r}dim(training2)[2]` complete columns remain.
+
+
+
+3. Investigate for highly-correlated data
+```{r}
+numeric_cols <- unlist(lapply(training2, is.numeric))
+numeric_data <- training2[ , numeric_cols]
+numeric_data <- numeric_data[,-1] # Remove the row number
+
+cors <- abs(cor(numeric_data))
+diag(cors) <- 0
+which (cors > 0.95, arr.ind = T)
+```
+I'll remove one of each pair of high-related columns, since the second in the pair is very unlikely to add additional information that wasn't captured in the first.
+```{r}
+coorelated_cols <- colnames(numeric_data %>% select(7,4,5))
+training3 <- training2 %>% select(-coorelated_cols)
+```
+We still have `{r}dim(training3)[2]` columns.
+
+Remove more correlated columns
+```{r}
+cors <- abs(cor(numeric_data %>% select(-coorelated_cols)))
+diag(cors) <- 0
+which (cors > 0.80, arr.ind = T)
+```
+
+```{r}
+coorelated_cols2 <- colnames(numeric_data %>% select(8,9,18,24,25,28,29))
+training4 <- training3 %>% select(-coorelated_cols2)
+```
+We still have `{r}dim(training4)[2]` columns.
+
+4. Remove columns that don't contain real data
+The formated date is redundant with the other datetimestamps and the row number is administrative.
+```{r}
+training5 <- training4 %>% select(-X, -cvtd_timestamp)
+```
+
+Normalize the training set
+```{r}
+preProcess <- preProcess(training5, method=c("center", "scale"))
+training5_norm <- predict(preProcess,training5)
+```
+
+
+Run a couple different training methods
+```{r}
+model1 <- train(training5_norm %>% select(-classe), training$classe, method="treebag") # (Training) Accuracy: 0.9849203  Kappa: 0.9809043
+
+model2 <- train(training5_norm %>% select(-classe, -user_name, -num_window), training$classe, method="treebag")
+
+```
+
+## Cross Validation
+Prep the test set:
+```{r}
+testing5 <- testing %>% select(colnames(training5))
+testing5_norm <- predict(preProcess, testing5)
+```
+
+
+```{r}
+model1_test_predictions <- predict(model1,testing5_norm)
+(model1_test_cmatrix <- confusionMatrix(model1_test_predictions,testing5_norm$classe))
+# Accuracy : 0.9921      
+model2_test_predictions <- predict(model2,testing5_norm)
+(model2_test_cmatrix <- confusionMatrix(model2_test_predictions,testing5_norm$classe))
+
+model1_test_cmatrix[3]
+model2_test_cmatrix[3]
+```
+Model 1 did better than model 2.
+
+Test with another random sample:
+```{r}
+inTrain <- createDataPartition(buildData$classe, p=0.7, list=FALSE)
+training_v2 <- buildData[-inTrain,]
+testing_v2 <- buildData[inTrain,]
+
+testing_v2_5 <- testing_v2 %>% select(colnames(training5))
+testing_v2_5_norm <- predict(preProcess, testing_v2_5)
+
+training_v2_5 <- training_v2 %>% select(colnames(training5))
+training_v2_norm <- predict(preProcess, training_v2_5)
+
+
+model1_v2 <- train(testing_v2_5_norm %>% select(-classe), testing_v2_5_norm$classe, method="treebag")
+model2_v2 <- train(testing_v2_5_norm %>% select(-classe, -user_name, -num_window), testing_v2_5_norm$classe, method="treebag")
+
+model1_test_v2_predictions <- predict(model1_v2,testing5_norm)
+(model1_test_v2_cmatrix <- confusionMatrix(model1_test_v2_predictions,testing5_norm$classe))
+  
+model2_test_v2_predictions <- predict(model2_v2,testing5_norm)
+(model2_test_v2_cmatrix <- confusionMatrix(model2_test_v2_predictions,testing5_norm$classe))
+```
+Using a new random sample, model 1 still had a better in sample error rate than model 2, with an accuracy of around 99.8%.
+
+
+## Expected out of sample error
+The in sample error was low: Accuracy of 98% one models.
+To predict the out of sample error, I will test the models on the validation set (which was not used to develop the models).
+```{r}
+validation_5 <- validation %>% select(colnames(training5))
+validation_5_norm <- predict(preProcess, validation_5)
+
+model1_validation_v2_predictions <- predict(model1_v2,validation_5_norm)
+(model1_validation_v2_cmatrix <- confusionMatrix(model1_validation_v2_predictions,validation_5_norm$classe))
+  
+model2_validation_v2_predictions <- predict(model2_v2,validation_5_norm)
+(model2_test_v2_cmatrix <- confusionMatrix(model2_validation_v2_predictions,validation_5_norm$classe))
+```
+Out of sample accuracy is estimated at 99.5%, which is worse than the in sample accuracy, as expected, since in sample error rates should be less than out of sample error rates.
+
+
+## Predict 20 different test cases
+```{r}
+final_test_set <- read.csv("pml-testing.csv")
+final_test_set6 <- final_test_set %>% select(colnames(training5 %>% select(-classe)))
+final_test_set6_norm <- predict(preProcess, final_test_set6)
+
+model1_test_predictions <- predict(model1,final_test_set6_norm)
+(model1_test_cmatrix <- confusionMatrix(model1_test_predictions,testing6_norm$classe))
+```
+
+
+## Link to Github
