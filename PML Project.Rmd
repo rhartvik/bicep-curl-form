@@ -29,14 +29,14 @@ dim(validation)
 ```
 ## How I built my model
 
-The dataset started with `{r}dim(training)[2]` columns.
+The dataset started with `r dim(training)[2]` columns.
 In order to produce a model that will train in a reasonable amount of time, I want to select only a subset of the columns. I will focus on eliminating columns that are unlikely to provide value to the model.
 
 1. Remove columns with little variance results:
 ```{r}
 training1 <- training[,-nearZeroVar(training)]
 ```
- `{r}dim(training1)[2]` columns remain.
+ `r dim(training1)[2]` columns remain.
 
 
 2. Remove columns that are null for too many rows:
@@ -46,7 +46,7 @@ percentage_provided <- training1 %>% summarise_each(funs(sum(!is.na(.))/n()))
 incomplete_columns <- colnames(percentage_provided[,(percentage_provided[1,]) < 1])
 training2 <- training1 %>% select(-incomplete_columns)
 ```
- `{r}dim(training2)[2]` complete columns remain.
+ `r dim(training2)[2]` complete columns remain.
 
 
 
@@ -65,7 +65,7 @@ I'll remove one of each pair of high-related columns, since the second in the pa
 coorelated_cols <- colnames(numeric_data %>% select(7,4,5))
 training3 <- training2 %>% select(-coorelated_cols)
 ```
-We still have `{r}dim(training3)[2]` columns.
+We still have `r dim(training3)[2]` columns.
 
 Remove more correlated columns
 ```{r}
@@ -78,7 +78,7 @@ which (cors > 0.80, arr.ind = T)
 coorelated_cols2 <- colnames(numeric_data %>% select(8,9,18,24,25,28,29))
 training4 <- training3 %>% select(-coorelated_cols2)
 ```
-We still have `{r}dim(training4)[2]` columns.
+We still have `r dim(training4)[2]` columns.
 
 4. Remove columns that don't contain real data
 The formated date is redundant with the other datetimestamps and the row number is administrative.
